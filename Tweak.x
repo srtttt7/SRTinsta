@@ -1,9 +1,13 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <MobileCoreServices/MobileCoreServices.h>
+#import <objc/message.h>
 
+// =======================================================
+// 0. التصريحات المسبقة لتفادي أخطاء المترجم (Declarations)
+// =======================================================
 @interface UIViewController (SRTHelpers)
-- (void)srt_convertVideoToAudio:(NSURL *)videoURL;
+- (void)srt_convertAndSendAudioDirectly:(NSURL *)videoURL;
 @end
 
 @interface UIWindow (SRTHelpers)
@@ -11,25 +15,30 @@
 - (void)srt_pickVideoForAudio;
 @end
 
-static NSURL *gPendingConvertedAudioURL = nil;
+@interface IGDirectThreadViewController : UIViewController
+- (void)directComposerDidTapSendAudioWithURL:(NSURL *)url duration:(double)duration waveformData:(id)waveform;
+- (void)sendAudioMessageWithURL:(NSURL *)url duration:(double)duration waveformData:(id)waveform;
+- (void)_sendAudioMessageWithURL:(NSURL *)url duration:(double)duration waveformData:(id)waveform;
+@end
+
+// متغير عام للتحكم بالمحادثة النشطة حالياً
+static __weak IGDirectThreadViewController *gCurrentThreadVC = nil;
 
 // =======================================================
-// 1. Hook على مسار التسجيل واستبدال ملف الصوت قبل الإرسال
+// 1. Hook على IGDirectThreadViewController لتحديد المحادثة المفتوحة
 // =======================================================
-%hook AVAudioRecorder
+%hook IGDirectThreadViewController
 
-- (BOOL)record {
-    BOOL result = %orig;
-    
-    // إذا كان هناك صوت محول من الفيديو، نستبدل مسار الحفظ المؤقت للمايك
-    if (gPendingConvertedAudioURL && [NSFileManager.defaultManager fileExistsAtPath:gPendingConvertedAudioURL.path]) {
-        NSURL *destURL = self.url;
-        if (destURL) {
-            [NSFileManager.defaultManager removeItemAtURL:destURL error:nil];
-            [NSFileManager.defaultManager copyItemAtURL:gPendingConvertedAudioURL toURL:destURL error:nil];
-        }
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    gCurrentThreadVC = self;
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    %orig;
+    if (gCurrentThreadVC == self) {
+        gCurrentThreadVC = nil;
     }
-    return result;
 }
 
 %end
@@ -96,7 +105,7 @@ static NSURL *gPendingConvertedAudioURL = nil;
 %end
 
 // =======================================================
-// 3. معالجة تحويل الفيديو
+// 3. تحويل الفيديو إلى صوت وإرساله فوراً في الشات
 // =======================================================
 %hook UIViewController
 
@@ -105,7 +114,7 @@ static NSURL *gPendingConvertedAudioURL = nil;
     [picker dismissViewControllerAnimated:YES completion:^{
         NSURL *videoURL = info[UIImagePickerControllerMediaURL];
         if (videoURL) {
-            [self srt_convertVideoToAudio:videoURL];
+            [self srt_convertAndSendAudioDirectly:videoURL];
         }
     }];
 }
@@ -116,28 +125,33 @@ static NSURL *gPendingConvertedAudioURL = nil;
 }
 
 %new
-- (void)srt_convertVideoToAudio:(NSURL *)videoURL {
+- (void)srt_convertAndSendAudioDirectly:(NSURL *)videoURL {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL options:nil];
         AVAssetExportSession *exportSession = [AVAssetExportSession exportSessionWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
         
-        NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"srt_voice_override.m4a"];
-        NSFileManager *fm = [NSFileManager defaultManager];
-        if ([fm fileExistsAtPath:outputPath]) {
-            [fm removeItemAtPath:outputPath error:nil];
-        }
+        NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"srt_voice_%f.m4a", [[NSDate date] timeIntervalSince1970]]];
         
         exportSession.outputURL = [NSURL fileURLWithPath:outputPath];
         exportSession.outputFileType = AVFileTypeAppleM4A;
         
         [exportSession exportAsynchronouslyWithCompletionHandler:^{
             if (exportSession.status == AVAssetExportSessionStatusCompleted) {
-                gPendingConvertedAudioURL = [NSURL fileURLWithPath:outputPath];
-                
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    // إشعار بسيط بالاهتزاز للتنبيه بأن الصوت جاهز للإرسال
-                    UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-                    [generator impactOccurred];
+                    NSURL *audioURL = [NSURL fileURLWithPath:outputPath];
+                    AVURLAsset *audioAsset = [AVURLAsset URLAssetWithURL:audioURL options:nil];
+                    double duration = CMTimeGetSeconds(audioAsset.duration);
+                    
+                    if (gCurrentThreadVC) {
+                        // تجربة الاستدعاء المباشر لأكثر من دالة إرسال لضمان التوافقية مع مختلف إصدارات إنستغرام
+                        if ([gCurrentThreadVC respondsToSelector:@selector(directComposerDidTapSendAudioWithURL:duration:waveformData:)]) {
+                            [gCurrentThreadVC directComposerDidTapSendAudioWithURL:audioURL duration:duration waveformData:nil];
+                        } else if ([gCurrentThreadVC respondsToSelector:@selector(sendAudioMessageWithURL:duration:waveformData:)]) {
+                            [gCurrentThreadVC sendAudioMessageWithURL:audioURL duration:duration waveformData:nil];
+                        } else if ([gCurrentThreadVC respondsToSelector:@selector(_sendAudioMessageWithURL:duration:waveformData:)]) {
+                            [gCurrentThreadVC _sendAudioMessageWithURL:audioURL duration:duration waveformData:nil];
+                        }
+                    }
                 });
             }
         }];
