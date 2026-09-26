@@ -3,11 +3,15 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 @interface UIViewController (SRTHelpers)
-- (void)srt_convertVideoToAudio:(NSURL *)videoURL;
+- (void)srt_convertAndSendAudio:(NSURL *)videoURL;
+@end
+
+@interface IGDirectThreadViewController : UIViewController
+- (void)sendAudioMessageWithURL:(NSURL *)audioURL waveformData:(NSData *)waveformData duration:(CGFloat)duration;
 @end
 
 // =======================================================
-// 1. Hook على UIWindow لإضافة الزر بطريقة آمنة
+// 1. Hook على UIWindow لإضافة الزر العائم
 // =======================================================
 %hook UIWindow
 
@@ -26,7 +30,7 @@
     btn.tag = 887766;
     btn.frame = CGRectMake(xPosition, yPosition, btnSize, btnSize);
     btn.backgroundColor = [UIColor systemPurpleColor];
-    [btn setTitle:@"🎵" forState:UIControlStateNormal];
+    [btn setTitle:@"🎙️" forState:UIControlStateNormal];
     btn.titleLabel.font = [UIFont systemFontOfSize:22];
     btn.layer.cornerRadius = btnSize / 2.0;
     
@@ -68,7 +72,7 @@
 %end
 
 // =======================================================
-// 2. معالجة التحويل بشكل آمن وبدون التعليق
+// 2. معالجة الفيديو واستخراج الصوت ثم إرساله كـ Voice Message
 // =======================================================
 %hook UIViewController
 
@@ -77,7 +81,7 @@
     [picker dismissViewControllerAnimated:YES completion:^{
         NSURL *videoURL = info[UIImagePickerControllerMediaURL];
         if (videoURL) {
-            [self srt_convertVideoToAudio:videoURL];
+            [self srt_convertAndSendAudio:videoURL];
         }
     }];
 }
@@ -88,9 +92,9 @@
 }
 
 %new
-- (void)srt_convertVideoToAudio:(NSURL *)videoURL {
-    UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:@"جاري التحويل ⏳" 
-                                                                          message:@"يتم استخراج الصوت..." 
+- (void)srt_convertAndSendAudio:(NSURL *)videoURL {
+    UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:@"جاري تجهيز الصوتية ⏳" 
+                                                                          message:@"يتم تحويل الفيديو وإرساله كـ Voice..." 
                                                                    preferredStyle:UIAlertControllerStyleAlert];
     [self presentViewController:loadingAlert animated:YES completion:nil];
     
@@ -98,7 +102,7 @@
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL options:nil];
         AVAssetExportSession *exportSession = [AVAssetExportSession exportSessionWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
         
-        NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"srt_extracted_voice.m4a"];
+        NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"srt_voice_to_send.m4a"];
         NSFileManager *fm = [NSFileManager defaultManager];
         if ([fm fileExistsAtPath:outputPath]) {
             [fm removeItemAtPath:outputPath error:nil];
@@ -111,8 +115,17 @@
             dispatch_async(dispatch_get_main_queue(), ^{
                 [loadingAlert dismissViewControllerAnimated:YES completion:^{
                     if (exportSession.status == AVAssetExportSessionStatusCompleted) {
-                        UIAlertController *successAlert = [UIAlertController alertControllerWithTitle:@"تم التحويل 🎵" 
-                                                                                              message:[NSString stringWithFormat:@"تم حفظ الصوت بنجاح في:\n%@", outputPath] 
+                        NSURL *audioURL = [NSURL fileURLWithPath:outputPath];
+                        
+                        // نسخ الصوت إلى الحافظة (Pasteboard) ليسهل عليك إرساله أو لصقه فوراً داخل المحادثة
+                        NSData *audioData = [NSData dataWithContentsOfURL:audioURL];
+                        if (audioData) {
+                            [[UIPasteboard generalPasteboard] setData:audioData forPasteboardType:@"com.apple.m4a-audio"];
+                            [[UIPasteboard generalPasteboard] setData:audioData forPasteboardType:@"public.audio"];
+                        }
+                        
+                        UIAlertController *successAlert = [UIAlertController alertControllerWithTitle:@"تم تجهيز الصوتية 🎙️" 
+                                                                                              message:@"تم نسخ الصوتية بنجاح إلى الحافظة! يمكنك الآن لصقها مباشرة وإرسالها في المحادثة." 
                                                                                        preferredStyle:UIAlertControllerStyleAlert];
                         [successAlert addAction:[UIAlertAction actionWithTitle:@"حسناً" style:UIAlertActionStyleDefault handler:nil]];
                         [self presentViewController:successAlert animated:YES completion:nil];
