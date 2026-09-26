@@ -8,4 +8,4 @@ InstaSRT_FILES = Tweak.x
 InstaSRT_CFLAGS = -fobjc-arc
 InstaSRT_FRAMEWORKS = UIKit
 
-include $(THEOS_MAKEPATH)/tweak.mk
+include $(THEOS)/makefiles/tweak.mk
