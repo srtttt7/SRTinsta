@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 
-// --- إعدادات الأداة ---
+// --- متغيرات حالات الميزات ---
 static BOOL isAntiDeleteEnabled = YES;
 static BOOL isVoiceDownloadEnabled = YES;
 
@@ -21,19 +21,18 @@ static BOOL isVoiceDownloadEnabled = YES;
         [self openSRTMenuFromController:vc];
     }]];
     
-    NSString *voiceTitle = isVoiceDownloadEnabled ? @"ميزات الصوتيات: [مفعل ✅]" : @"ميزات الصوتيات: [معطل ❌]";
+    NSString *voiceTitle = isVoiceDownloadEnabled ? @"إخفاء مؤشر الاستماع للصوتيات: [مفعل ✅]" : @"إخفاء مؤشر الاستماع للصوتيات: [معطل ❌]";
     [menu addAction:[UIAlertAction actionWithTitle:voiceTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         isVoiceDownloadEnabled = !isVoiceDownloadEnabled;
         [self openSRTMenuFromController:vc];
     }]];
     
     [menu addAction:[UIAlertAction actionWithTitle:@"إغلاق" style:UIAlertActionStyleCancel handler:nil]];
-    
     [vc presentViewController:menu animated:YES completion:nil];
 }
 @end
 
-// --- عنصر الزر العائم وتفاعله ---
+// --- عنصر الزر العائم ---
 @interface SRTButton : UIButton
 @end
 
@@ -51,7 +50,6 @@ static BOOL isVoiceDownloadEnabled = YES;
         
         UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self addGestureRecognizer:pan];
-        
         [self addTarget:self action:@selector(buttonTapped) forControlEvents:UIControlEventTouchUpInside];
     }
     return self;
@@ -79,7 +77,40 @@ static BOOL isVoiceDownloadEnabled = YES;
 }
 @end
 
-// --- تهيئة الأداة عند تشغيل التطبيق ---
+// --- 1. Hook منع حذف الرسائل (Anti-Unsend / Keep Deleted Messages) ---
+%hook IGDirectPublishedMessage
+- (BOOL)isDeleted {
+    if (isAntiDeleteEnabled) {
+        // نحدد الرسالة على أنها غير محذوفة حتى لا تختفي من الشاشة
+        return NO;
+    }
+    return %orig;
+}
+%end
+
+%hook IGDirectMessageCell
+- (void)setHideMessageContent:(BOOL)arg1 {
+    if (isAntiDeleteEnabled) {
+        // منع إخفاء محتوى الرسالة عند الحذف
+        %orig(NO);
+    } else {
+        %orig(arg1);
+    }
+}
+%end
+
+// --- 2. Hook منع إرسال إشعار استماع الفويس (Unseen Voice Notes) ---
+%hook IGDirectAudioMessagePlaybackTracker
+- (void)markAudioMessageAsListened:(id)arg1 {
+    if (isVoiceDownloadEnabled) {
+        // إلغاء إرسال إشعار قراءة/استماع الملاحظة الصوتية
+        return;
+    }
+    %orig;
+}
+%end
+
+// --- تشغيل التنبيه والزر عند الفتح ---
 %ctor {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         UIWindow *keyWindow = nil;
@@ -89,28 +120,9 @@ static BOOL isVoiceDownloadEnabled = YES;
                 break;
             }
         }
-        
         if (keyWindow && keyWindow.rootViewController) {
-            // 1. تنبيه الترحيب المباشر
-            UIAlertController *welcomeAlert = [UIAlertController alertControllerWithTitle:@"InstaSRT 🚀"
-                                                                           message:@"تم تحميل أداة InstaSRT بنجاح!"
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-            [welcomeAlert addAction:[UIAlertAction actionWithTitle:@"حسناً" style:UIAlertActionStyleDefault handler:nil]];
-            [keyWindow.rootViewController presentViewController:welcomeAlert animated:YES completion:nil];
-            
-            // 2. إظهار زر SRT العائم
             SRTButton *srtBtn = [[SRTButton alloc] initWithFrame:CGRectMake(20, 100, 50, 50)];
             [keyWindow addSubview:srtBtn];
         }
     });
 }
-
-// --- Hook منع حذف الرسائل ---
-%hook IGDirectMessageSectionController
-- (void)didUnsendMessage:(id)message {
-    if (isAntiDeleteEnabled) {
-        return;
-    }
-    %orig;
-}
-%end
