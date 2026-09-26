@@ -3,6 +3,26 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 // =======================================================
+// 0. تعريف الفئات الخارجية لإنستغرام لمنع خطأ Buid Error
+// =======================================================
+@interface IGNavigationBar : UIView
+- (void)openInstaSRTMenu;
+@end
+
+@interface IGDirectComposerMicButton : UIView
+- (void)handleSRTVoiceLongPress:(UILongPressGestureRecognizer *)gesture;
+- (void)openMediaPickerForAudioExtraction;
+- (void)openDocumentPickerForAudio;
+- (void)processAndSendAudioFromURL:(NSURL *)inputURL;
+@end
+
+@interface IGDirectPublishedMessage : NSObject
+@end
+
+@interface IGStoryViewTracker : NSObject
+@end
+
+// =======================================================
 // 1. مفاتيح حفظ واسترجاع الإعدادات (NSUserDefaults)
 // =======================================================
 #define PREF_KEY(key) [NSString stringWithFormat:@"InstaSRT_%@", key]
