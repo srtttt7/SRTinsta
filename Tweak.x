@@ -8,7 +8,21 @@
 
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIWindow *window = nil;
+        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive) {
+                for (UIWindow *w in scene.windows) {
+                    if (w.isKeyWindow) {
+                        window = w;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!window) return;
+
+        UIViewController *rootVC = window.rootViewController;
         while (rootVC.presentedViewController) {
             rootVC = rootVC.presentedViewController;
         }
@@ -30,7 +44,6 @@
 %hook IGDirectMessageStore
 
 - (void)removeMessageForID:(id)msgId {
-    // منع الحذف تماماً
     NSLog(@"[SRT] Anti-Delete Triggered!");
 }
 
