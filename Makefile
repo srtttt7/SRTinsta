@@ -5,7 +5,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = InstaSRT
 InstaSRT_FILES = Tweak.x
-InstaSRT_CFLAGS = -fobjc-arc
+InstaSRT_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 InstaSRT_FRAMEWORKS = UIKit
 
 include $(THEOS)/makefiles/tweak.mk
