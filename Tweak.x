@@ -3,6 +3,18 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 // =======================================================
+// 0. التصريح عن الدوال لتفادي أخطاء المترجم (Compiler Declarations)
+// =======================================================
+@interface UIViewController (SRTExtension)
+- (void)srt_convertVideoToAudio:(NSURL *)videoURL;
+@end
+
+@interface UIWindow (SRTExtension)
+- (void)srt_handlePanGesture:(UIPanGestureRecognizer *)pan;
+- (void)srt_pickVideoForAudio;
+@end
+
+// =======================================================
 // 1. Hook على مستوى UIWindow لضمان ظهور الزر دائماً
 // =======================================================
 %hook UIWindow
@@ -64,16 +76,13 @@
     
     picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)topVC;
     
-    // تعيين الـ Handler عند اختيار الفيديو
-    objc_setAssociatedObject(topVC, "srt_picker_delegate", picker, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    
     [topVC presentViewController:picker animated:YES completion:nil];
 }
 
 %end
 
 // =======================================================
-// 2. Handling اختيارات الاستوديو والتحويل
+// 2. معالجة اختيار الفيديو والتحويل إلى صوت
 // =======================================================
 %hook UIViewController
 
