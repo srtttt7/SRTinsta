@@ -3,7 +3,16 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 // =======================================================
-// 1. Hook على متحكم المحادثات المباشرة (Direct Chat)
+// 1. تعريف واجهة متحكم المحادثات لتفادي خطأ Forward Declaration
+// =======================================================
+@interface IGDirectMainViewController : UIViewController
+- (void)srt_handlePanGesture:(UIPanGestureRecognizer *)pan;
+- (void)srt_pickVideoForAudio;
+- (void)srt_convertVideoToAudio:(NSURL *)videoURL;
+@end
+
+// =======================================================
+// 2. Hook إضافة الزر العائم القابل للتحريك
 // =======================================================
 %hook IGDirectMainViewController
 
@@ -13,10 +22,10 @@
     // منع تكرار إنشاء الزر إذا كان موجوداً
     if ([self.view viewWithTag:887766]) return;
     
-    // وضع الزر في منتصف الشاشة على اليمين (Center-Right)
+    // وضع الزر في منتصف الشاشة على اليمين
     CGFloat btnSize = 46.0;
-    CGFloat yPosition = (self.view.frame.size.height - btnSize) / 2.0; // منتصف الشاشة
-    CGFloat xPosition = self.view.frame.size.width - btnSize - 12.0; // أقصى اليمين مع هامش بسيط
+    CGFloat yPosition = (self.view.frame.size.height - btnSize) / 2.0;
+    CGFloat xPosition = self.view.frame.size.width - btnSize - 12.0;
     
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.tag = 887766;
@@ -26,13 +35,13 @@
     btn.titleLabel.font = [UIFont systemFontOfSize:22];
     btn.layer.cornerRadius = btnSize / 2.0;
     
-    // إضافة ظلال للزر ليكون شكله احترافي
+    // إضافة ظلال للزر
     btn.layer.shadowColor = [UIColor blackColor].CGColor;
     btn.layer.shadowOffset = CGSizeMake(0, 3);
     btn.layer.shadowOpacity = 0.35;
     btn.layer.shadowRadius = 5.0;
     
-    // إضافة إمكانية سحب الزر وتحريكه بحرية في أي مكان على الشاشة
+    // إضافة حركة السحب والإفلات (Pan Gesture)
     UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(srt_handlePanGesture:)];
     [btn addGestureRecognizer:panGesture];
     
