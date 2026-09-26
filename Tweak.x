@@ -70,9 +70,8 @@
         rootVC = rootVC.presentedViewController;
     }
     
-    // تنبيه بالبدء في المعالجة
     UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:@"جاري التحويل ⏳" 
-                                                                          message:@" يتم استخراج الصوت من الفيديو..." 
+                                                                          message:@"يتم استخراج الصوت من الفيديو..." 
                                                                    preferredStyle:UIAlertControllerStyleAlert];
     [rootVC presentViewController:loadingAlert animated:YES completion:nil];
     
@@ -104,7 +103,7 @@
                     [errAlert addAction:[UIAlertAction actionWithTitle:@"إغلاق" style:UIAlertActionStyleCancel handler:nil]];
                     [rootVC presentViewController:errAlert animated:YES completion:nil];
                 }
-            });
+            }];
         });
     }];
 }
