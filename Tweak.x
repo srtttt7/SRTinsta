@@ -3,7 +3,7 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 // =======================================================
-// 0. تعريف الفئات الخارجية لإنستغرام لمنع خطأ Buid Error
+// 0. تعريف الفئات الخارجية لإنستغرام لمنع خطأ Build Error
 // =======================================================
 @interface IGNavigationBar : UIView
 - (void)openInstaSRTMenu;
@@ -248,7 +248,7 @@
 - (void)openMediaPickerForAudioExtraction {
     UIImagePickerController *picker = [[UIImagePickerController alloc] init];
     picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
-    picker.mediaTypes = @[(NSString *)kUTTypeMovie, (NSString *)kUTTypeVideo];
+    picker.mediaTypes = @[@"public.movie", @"public.video"];
     picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)self;
     
     UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
