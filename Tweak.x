@@ -3,29 +3,22 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 // =======================================================
-// 1. تعريف واجهة متحكم المحادثات لتفادي خطأ Forward Declaration
+// 1. Hook على مستوى UIWindow لضمان ظهور الزر دائماً
 // =======================================================
-@interface IGDirectMainViewController : UIViewController
-- (void)srt_handlePanGesture:(UIPanGestureRecognizer *)pan;
-- (void)srt_pickVideoForAudio;
-- (void)srt_convertVideoToAudio:(NSURL *)videoURL;
-@end
+%hook UIWindow
 
-// =======================================================
-// 2. Hook إضافة الزر العائم القابل للتحريك
-// =======================================================
-%hook IGDirectMainViewController
-
-- (void)viewDidAppear:(BOOL)animated {
+- (void)makeKeyAndVisible {
     %orig;
     
-    // منع تكرار إنشاء الزر إذا كان موجوداً
-    if ([self.view viewWithTag:887766]) return;
+    // منع تكرار إنشاء الزر إذا كان موجوداً في النافذة
+    if ([self viewWithTag:887766]) return;
     
-    // وضع الزر في منتصف الشاشة على اليمين
-    CGFloat btnSize = 46.0;
-    CGFloat yPosition = (self.view.frame.size.height - btnSize) / 2.0;
-    CGFloat xPosition = self.view.frame.size.width - btnSize - 12.0;
+    // حساب الأبعاد للظهور في منتصف الشاشة على اليمين
+    CGFloat btnSize = 48.0;
+    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    CGFloat yPosition = (screenHeight - btnSize) / 2.0;
+    CGFloat xPosition = screenWidth - btnSize - 10.0;
     
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.tag = 887766;
@@ -35,26 +28,26 @@
     btn.titleLabel.font = [UIFont systemFontOfSize:22];
     btn.layer.cornerRadius = btnSize / 2.0;
     
-    // إضافة ظلال للزر
+    // إضافة ظلال وبروز للزر
     btn.layer.shadowColor = [UIColor blackColor].CGColor;
     btn.layer.shadowOffset = CGSizeMake(0, 3);
-    btn.layer.shadowOpacity = 0.35;
+    btn.layer.shadowOpacity = 0.5;
     btn.layer.shadowRadius = 5.0;
     
-    // إضافة حركة السحب والإفلات (Pan Gesture)
+    // إضافة إمكانية السحب والإفلات (Pan Gesture)
     UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(srt_handlePanGesture:)];
     [btn addGestureRecognizer:panGesture];
     
     [btn addTarget:self action:@selector(srt_pickVideoForAudio) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:btn];
+    [self addSubview:btn];
 }
 
 %new
 - (void)srt_handlePanGesture:(UIPanGestureRecognizer *)pan {
     UIView *btn = pan.view;
-    CGPoint translation = [pan translationInView:self.view];
+    CGPoint translation = [pan translationInView:self];
     btn.center = CGPointMake(btn.center.x + translation.x, btn.center.y + translation.y);
-    [pan setTranslation:CGPointZero inView:self.view];
+    [pan setTranslation:CGPointZero inView:self];
 }
 
 %new
@@ -62,10 +55,27 @@
     UIImagePickerController *picker = [[UIImagePickerController alloc] init];
     picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
     picker.mediaTypes = @[@"public.movie", @"public.video"];
-    picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)self;
     
-    [self presentViewController:picker animated:YES completion:nil];
+    // الحصول على أحدث ViewController معروض على الشاشة
+    UIViewController *topVC = self.rootViewController;
+    while (topVC.presentedViewController) {
+        topVC = topVC.presentedViewController;
+    }
+    
+    picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)topVC;
+    
+    // تعيين الـ Handler عند اختيار الفيديو
+    objc_setAssociatedObject(topVC, "srt_picker_delegate", picker, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    
+    [topVC presentViewController:picker animated:YES completion:nil];
 }
+
+%end
+
+// =======================================================
+// 2. Handling اختيارات الاستوديو والتحويل
+// =======================================================
+%hook UIViewController
 
 %new
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
