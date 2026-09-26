@@ -3,49 +3,59 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 
 // =======================================================
-// 1. الواجهات المستهدفة لشاشة المحادثة (Direct Chat)
+// 1. Hook على متحكم المحادثات المباشرة (Direct Chat)
 // =======================================================
-@interface IGDirectComposerContainerView : UIView
-- (void)srt_openAudioConverterPicker;
-- (void)srt_convertVideoToAudioAndSend:(NSURL *)videoURL;
-@end
+%hook IGDirectMainViewController
 
-// =======================================================
-// 2. Hook إضافة زر تحويل الصوت داخل شريط الكتابة
-// =======================================================
-%hook IGDirectComposerContainerView
-
-- (void)layoutSubviews {
+- (void)viewDidAppear:(BOOL)animated {
     %orig;
     
     // منع تكرار إنشاء الزر إذا كان موجوداً
-    if ([self viewWithTag:778899]) return;
+    if ([self.view viewWithTag:887766]) return;
     
-    UIButton *audioConvertBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    audioConvertBtn.tag = 778899;
-    audioConvertBtn.frame = CGRectMake(10, (self.frame.size.height - 32) / 2, 32, 32);
-    [audioConvertBtn setTitle:@"🎵" forState:UIControlStateNormal];
-    audioConvertBtn.titleLabel.font = [UIFont systemFontOfSize:20];
-    audioConvertBtn.backgroundColor = [[UIColor systemPurpleColor] colorWithAlphaComponent:0.2];
-    audioConvertBtn.layer.cornerRadius = 16;
-    audioConvertBtn.clipsToBounds = YES;
+    // وضع الزر في منتصف الشاشة على اليمين (Center-Right)
+    CGFloat btnSize = 46.0;
+    CGFloat yPosition = (self.view.frame.size.height - btnSize) / 2.0; // منتصف الشاشة
+    CGFloat xPosition = self.view.frame.size.width - btnSize - 12.0; // أقصى اليمين مع هامش بسيط
     
-    [audioConvertBtn addTarget:self action:@selector(srt_openAudioConverterPicker) forControlEvents:UIControlEventTouchUpInside];
-    [self addSubview:audioConvertBtn];
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.tag = 887766;
+    btn.frame = CGRectMake(xPosition, yPosition, btnSize, btnSize);
+    btn.backgroundColor = [UIColor systemPurpleColor];
+    [btn setTitle:@"🎵" forState:UIControlStateNormal];
+    btn.titleLabel.font = [UIFont systemFontOfSize:22];
+    btn.layer.cornerRadius = btnSize / 2.0;
+    
+    // إضافة ظلال للزر ليكون شكله احترافي
+    btn.layer.shadowColor = [UIColor blackColor].CGColor;
+    btn.layer.shadowOffset = CGSizeMake(0, 3);
+    btn.layer.shadowOpacity = 0.35;
+    btn.layer.shadowRadius = 5.0;
+    
+    // إضافة إمكانية سحب الزر وتحريكه بحرية في أي مكان على الشاشة
+    UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(srt_handlePanGesture:)];
+    [btn addGestureRecognizer:panGesture];
+    
+    [btn addTarget:self action:@selector(srt_pickVideoForAudio) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:btn];
 }
 
 %new
-- (void)srt_openAudioConverterPicker {
+- (void)srt_handlePanGesture:(UIPanGestureRecognizer *)pan {
+    UIView *btn = pan.view;
+    CGPoint translation = [pan translationInView:self.view];
+    btn.center = CGPointMake(btn.center.x + translation.x, btn.center.y + translation.y);
+    [pan setTranslation:CGPointZero inView:self.view];
+}
+
+%new
+- (void)srt_pickVideoForAudio {
     UIImagePickerController *picker = [[UIImagePickerController alloc] init];
     picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
     picker.mediaTypes = @[@"public.movie", @"public.video"];
     picker.delegate = (id<UIImagePickerControllerDelegate, UINavigationControllerDelegate>)self;
     
-    UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
-    while (rootVC.presentedViewController) {
-        rootVC = rootVC.presentedViewController;
-    }
-    [rootVC presentViewController:picker animated:YES completion:nil];
+    [self presentViewController:picker animated:YES completion:nil];
 }
 
 %new
@@ -54,7 +64,7 @@
     
     NSURL *videoURL = info[UIImagePickerControllerMediaURL];
     if (videoURL) {
-        [self srt_convertVideoToAudioAndSend:videoURL];
+        [self srt_convertVideoToAudio:videoURL];
     }
 }
 
@@ -64,16 +74,11 @@
 }
 
 %new
-- (void)srt_convertVideoToAudioAndSend:(NSURL *)videoURL {
-    UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
-    while (rootVC.presentedViewController) {
-        rootVC = rootVC.presentedViewController;
-    }
-    
+- (void)srt_convertVideoToAudio:(NSURL *)videoURL {
     UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:@"جاري التحويل ⏳" 
                                                                           message:@"يتم استخراج الصوت من الفيديو..." 
                                                                    preferredStyle:UIAlertControllerStyleAlert];
-    [rootVC presentViewController:loadingAlert animated:YES completion:nil];
+    [self presentViewController:loadingAlert animated:YES completion:nil];
     
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL options:nil];
     AVAssetExportSession *exportSession = [AVAssetExportSession exportSessionWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
@@ -91,17 +96,17 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             [loadingAlert dismissViewControllerAnimated:YES completion:^{
                 if (exportSession.status == AVAssetExportSessionStatusCompleted) {
-                    UIAlertController *successAlert = [UIAlertController alertControllerWithTitle:@"تم بنجاح! 🎵" 
-                                                                                          message:[NSString stringWithFormat:@"تم استخراج الملف الصوتي بنجاح وحفظه في:\n%@", outputPath] 
+                    UIAlertController *successAlert = [UIAlertController alertControllerWithTitle:@"تم التحويل بنجاح! 🎵" 
+                                                                                          message:[NSString stringWithFormat:@"تم استخراج ملف الصوت بنجاح وحفظه في:\n\n%@", outputPath] 
                                                                                    preferredStyle:UIAlertControllerStyleAlert];
                     [successAlert addAction:[UIAlertAction actionWithTitle:@"حسناً" style:UIAlertActionStyleDefault handler:nil]];
-                    [rootVC presentViewController:successAlert animated:YES completion:nil];
+                    [self presentViewController:successAlert animated:YES completion:nil];
                 } else {
                     UIAlertController *errAlert = [UIAlertController alertControllerWithTitle:@"خطأ" 
                                                                                       message:@"فشل استخراج الصوت من هذا الفيديو." 
                                                                                preferredStyle:UIAlertControllerStyleAlert];
                     [errAlert addAction:[UIAlertAction actionWithTitle:@"إغلاق" style:UIAlertActionStyleCancel handler:nil]];
-                    [rootVC presentViewController:errAlert animated:YES completion:nil];
+                    [self presentViewController:errAlert animated:YES completion:nil];
                 }
             }];
         });
