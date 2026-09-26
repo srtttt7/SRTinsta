@@ -1,10 +1,10 @@
-name: Build Tweak
+name: Build InstaSRT Tweak
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
@@ -12,27 +12,30 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies & ldid
+        run: |
+          brew install ldid libplist
 
       - name: Setup Theos
         run: |
           git clone --recursive https://github.com/theos/theos.git $HOME/theos
-          curl -LO https://github.com/theos/sdks/archive/master.zip
-          unzip master.zip
-          mv sdks-master/* $HOME/theos/sdks/
-          rm -rf master.zip sdks-master
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
       - name: Build Package
         run: |
           export THEOS=$HOME/theos
+          make clean
           make package FINALPACKAGE=1
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: InstaSRT-Output
+          name: InstaSRT-Dylib-Deb
           path: |
-            packages/*.deb
-            .theos/obj/debug/*.dylib
             .theos/obj/*.dylib
+            packages/*.deb
