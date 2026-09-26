@@ -9,16 +9,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Setup Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang git perl zip unzip
+        uses: actions/checkout@v4
 
       - name: Setup Theos
         run: |
@@ -35,7 +30,7 @@ jobs:
           make package FINALPACKAGE=1
 
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: InstaSRT-Output
           path: |
