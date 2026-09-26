@@ -2,6 +2,18 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MobileCoreServices/MobileCoreServices.h>
 
+// =======================================================
+// 0. التصريحات الخاصة بالمترجم (Interface Declarations)
+// =======================================================
+@interface UIViewController (SRTHelpers)
+- (void)srt_processAndSendDirectly:(NSURL *)videoURL;
+@end
+
+@interface UIWindow (SRTHelpers)
+- (void)srt_handlePanGesture:(UIPanGestureRecognizer *)pan;
+- (void)srt_pickVideoForAudio;
+@end
+
 @interface IGDirectThreadViewController : UIViewController
 - (void)_sendAudioMessageWithURL:(NSURL *)url duration:(double)duration waveformData:(id)waveform;
 @end
@@ -9,7 +21,7 @@
 static NSURL *gPendingAudioURL = nil;
 
 // =======================================================
-// 1. Hook على النافذة لإنشاء الزر العائم
+// 1. Hook على UIWindow لإضافة الزر العائم
 // =======================================================
 %hook UIWindow
 
@@ -70,7 +82,7 @@ static NSURL *gPendingAudioURL = nil;
 %end
 
 // =======================================================
-// 2. معالجة الفيديو وإرساله مباشرة
+// 2. معالجة الفيديو وإرساله مباشرة كصوتية
 // =======================================================
 %hook UIViewController
 
@@ -109,7 +121,6 @@ static NSURL *gPendingAudioURL = nil;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     gPendingAudioURL = [NSURL fileURLWithPath:outputPath];
                     
-                    // البحث عن ViewController الخاص بالمحادثة المفتوحة حالياً
                     UIViewController *currentVC = self;
                     while (currentVC && ![currentVC isKindOfClass:NSClassFromString(@"IGDirectThreadViewController")]) {
                         if (currentVC.childViewControllers.count > 0) {
@@ -119,11 +130,9 @@ static NSURL *gPendingAudioURL = nil;
                         }
                     }
                     
-                    // إرسال الصوت مباشرة إذا كنا داخل الشات
                     if ([currentVC isKindOfClass:NSClassFromString(@"IGDirectThreadViewController")]) {
                         IGDirectThreadViewController *threadVC = (IGDirectThreadViewController *)currentVC;
                         
-                        // حساب مدة الصوت
                         AVURLAsset *audioAsset = [AVURLAsset URLAssetWithURL:gPendingAudioURL options:nil];
                         double duration = CMTimeGetSeconds(audioAsset.duration);
                         
