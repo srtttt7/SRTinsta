@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <MobileCoreServices/MobileCoreServices.h>
+#import <objc/runtime.h>
 
 // =======================================================
 // 0. تعريف الفئات الخارجية لإنستغرام لمنع خطأ Build Error
@@ -202,20 +203,22 @@
 // =======================================================
 // 4. Hook الضغط المطول على المايك وتحويل الفيديو لصوت
 // =======================================================
+static const char *kSRTLongPressKey = "SRTLongPressKey";
+
 %hook IGDirectComposerMicButton
 
 - (void)didMoveToWindow {
     %orig;
     
     for (UIGestureRecognizer *recognizer in self.gestureRecognizers) {
-        if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]] && recognizer.tag == 8899) {
+        if (objc_getAssociatedObject(recognizer, kSRTLongPressKey)) {
             return;
         }
     }
     
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleSRTVoiceLongPress:)];
     longPress.minimumPressDuration = 0.4;
-    longPress.tag = 8899;
+    objc_setAssociatedObject(longPress, kSRTLongPressKey, @(YES), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [self addGestureRecognizer:longPress];
 }
 
