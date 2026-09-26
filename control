@@ -1,0 +1,9 @@
+Package: com.srt.instasrt
+Name: InstaSRT
+Depends: mobilesubstrate
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Instagram SRT Tweak by SRT
+Maintainer: SRT
+Author: SRT
+Section: Tweaks
