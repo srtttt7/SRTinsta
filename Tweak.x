@@ -2,16 +2,14 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MobileCoreServices/MobileCoreServices.h>
 
-@interface UIViewController (SRTHelpers)
-- (void)srt_convertAndSendAudio:(NSURL *)videoURL;
+@interface IGDirectThreadViewController : UIViewController
+- (void)_sendAudioMessageWithURL:(NSURL *)url duration:(double)duration waveformData:(id)waveform;
 @end
 
-@interface IGDirectThreadViewController : UIViewController
-- (void)sendAudioMessageWithURL:(NSURL *)audioURL waveformData:(NSData *)waveformData duration:(CGFloat)duration;
-@end
+static NSURL *gPendingAudioURL = nil;
 
 // =======================================================
-// 1. Hook على UIWindow لإضافة الزر العائم
+// 1. Hook على النافذة لإنشاء الزر العائم
 // =======================================================
 %hook UIWindow
 
@@ -72,7 +70,7 @@
 %end
 
 // =======================================================
-// 2. معالجة الفيديو واستخراج الصوت ثم إرساله كـ Voice Message
+// 2. معالجة الفيديو وإرساله مباشرة
 // =======================================================
 %hook UIViewController
 
@@ -81,7 +79,7 @@
     [picker dismissViewControllerAnimated:YES completion:^{
         NSURL *videoURL = info[UIImagePickerControllerMediaURL];
         if (videoURL) {
-            [self srt_convertAndSendAudio:videoURL];
+            [self srt_processAndSendDirectly:videoURL];
         }
     }];
 }
@@ -92,17 +90,12 @@
 }
 
 %new
-- (void)srt_convertAndSendAudio:(NSURL *)videoURL {
-    UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:@"جاري تجهيز الصوتية ⏳" 
-                                                                          message:@"يتم تحويل الفيديو وإرساله كـ Voice..." 
-                                                                   preferredStyle:UIAlertControllerStyleAlert];
-    [self presentViewController:loadingAlert animated:YES completion:nil];
-    
+- (void)srt_processAndSendDirectly:(NSURL *)videoURL {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL options:nil];
         AVAssetExportSession *exportSession = [AVAssetExportSession exportSessionWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
         
-        NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"srt_voice_to_send.m4a"];
+        NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"srt_direct_voice.m4a"];
         NSFileManager *fm = [NSFileManager defaultManager];
         if ([fm fileExistsAtPath:outputPath]) {
             [fm removeItemAtPath:outputPath error:nil];
@@ -112,32 +105,34 @@
         exportSession.outputFileType = AVFileTypeAppleM4A;
         
         [exportSession exportAsynchronouslyWithCompletionHandler:^{
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [loadingAlert dismissViewControllerAnimated:YES completion:^{
-                    if (exportSession.status == AVAssetExportSessionStatusCompleted) {
-                        NSURL *audioURL = [NSURL fileURLWithPath:outputPath];
-                        
-                        // نسخ الصوت إلى الحافظة (Pasteboard) ليسهل عليك إرساله أو لصقه فوراً داخل المحادثة
-                        NSData *audioData = [NSData dataWithContentsOfURL:audioURL];
-                        if (audioData) {
-                            [[UIPasteboard generalPasteboard] setData:audioData forPasteboardType:@"com.apple.m4a-audio"];
-                            [[UIPasteboard generalPasteboard] setData:audioData forPasteboardType:@"public.audio"];
+            if (exportSession.status == AVAssetExportSessionStatusCompleted) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    gPendingAudioURL = [NSURL fileURLWithPath:outputPath];
+                    
+                    // البحث عن ViewController الخاص بالمحادثة المفتوحة حالياً
+                    UIViewController *currentVC = self;
+                    while (currentVC && ![currentVC isKindOfClass:NSClassFromString(@"IGDirectThreadViewController")]) {
+                        if (currentVC.childViewControllers.count > 0) {
+                            currentVC = currentVC.childViewControllers.lastObject;
+                        } else {
+                            break;
                         }
-                        
-                        UIAlertController *successAlert = [UIAlertController alertControllerWithTitle:@"تم تجهيز الصوتية 🎙️" 
-                                                                                              message:@"تم نسخ الصوتية بنجاح إلى الحافظة! يمكنك الآن لصقها مباشرة وإرسالها في المحادثة." 
-                                                                                       preferredStyle:UIAlertControllerStyleAlert];
-                        [successAlert addAction:[UIAlertAction actionWithTitle:@"حسناً" style:UIAlertActionStyleDefault handler:nil]];
-                        [self presentViewController:successAlert animated:YES completion:nil];
-                    } else {
-                        UIAlertController *errAlert = [UIAlertController alertControllerWithTitle:@"خطأ" 
-                                                                                          message:@"تعذر استخراج الصوت من الفيديو." 
-                                                                                   preferredStyle:UIAlertControllerStyleAlert];
-                        [errAlert addAction:[UIAlertAction actionWithTitle:@"إغلاق" style:UIAlertActionStyleCancel handler:nil]];
-                        [self presentViewController:errAlert animated:YES completion:nil];
                     }
-                }];
-            });
+                    
+                    // إرسال الصوت مباشرة إذا كنا داخل الشات
+                    if ([currentVC isKindOfClass:NSClassFromString(@"IGDirectThreadViewController")]) {
+                        IGDirectThreadViewController *threadVC = (IGDirectThreadViewController *)currentVC;
+                        
+                        // حساب مدة الصوت
+                        AVURLAsset *audioAsset = [AVURLAsset URLAssetWithURL:gPendingAudioURL options:nil];
+                        double duration = CMTimeGetSeconds(audioAsset.duration);
+                        
+                        if ([threadVC respondsToSelector:@selector(_sendAudioMessageWithURL:duration:waveformData:)]) {
+                            [threadVC _sendAudioMessageWithURL:gPendingAudioURL duration:duration waveformData:nil];
+                        }
+                    }
+                });
+            }
         }];
     });
 }
